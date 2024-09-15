@@ -1,0 +1,348 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Main class to initialize the game window and handle the game loop.
+ */
+public class BrickBreakerGame extends JFrame {
+
+    private static final int WIDTH = 800;
+    private static final int HEIGHT = 600;
+    private GamePanel gamePanel;
+
+    /**
+     * Constructor to set up the game window and start the game loop.
+     */
+    public BrickBreakerGame() {
+        setTitle("Brick Breaker");
+        setSize(WIDTH, HEIGHT);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setResizable(false);
+
+        gamePanel = new GamePanel();
+        add(gamePanel);
+        setVisible(true);
+
+        Timer timer = new Timer(10, new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                gamePanel.updateGame();
+                gamePanel.repaint();
+            }
+        });
+        timer.start();
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new BrickBreakerGame());
+    }
+}
+
+/**
+ * Panel where game elements are drawn and updated.
+ */
+class GamePanel extends JPanel {
+
+    private Paddle paddle;
+    private Ball ball;
+    private List<Brick> bricks;
+    private boolean[] keys;
+    private int score;
+    private boolean gameOver;
+    private boolean levelCompleted;
+    private int level;
+    private final int maxLevel = 5;
+
+    /**
+     * Constructor to initialize game components and settings.
+     */
+    public GamePanel() {
+        paddle = new Paddle();
+        ball = new Ball();
+        bricks = new ArrayList<>();
+        keys = new boolean[256];
+        score = 0;
+        gameOver = false;
+        levelCompleted = false;
+        level = 1;
+        initializeBricks();
+
+        setBackground(Color.BLACK);
+        setFocusable(true);
+        addKeyListener(new KeyAdapter() {
+            public void keyPressed(KeyEvent e) {
+                keys[e.getKeyCode()] = true;
+            }
+
+            public void keyReleased(KeyEvent e) {
+                keys[e.getKeyCode()] = false;
+            }
+        });
+    }
+
+    /**
+     * Initializes the bricks for the current level.
+     */
+    private void initializeBricks() {
+        bricks.clear();
+        int rows = 5 + level; // Increase rows with each level
+        int cols = 10;
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                bricks.add(new Brick(j * 80 + 10, i * 30 + 10));
+            }
+        }
+    }
+
+    /**
+     * Updates game state including paddle movement, ball movement, and collisions.
+     */
+    public void updateGame() {
+        if (gameOver) return;
+        if (levelCompleted) {
+            if (level >= maxLevel) {
+                gameOver = true;
+                return;
+            }
+            level++;
+            levelCompleted = false;
+            ball.reset();
+            paddle.reset();
+            initializeBricks();
+            return;
+        }
+
+        paddle.move(keys);
+        ball.move();
+        ball.checkCollision(paddle);
+
+        // Check for collisions with bricks
+        List<Brick> bricksToRemove = new ArrayList<>();
+        for (Brick brick : bricks) {
+            if (brick != null && ball.checkCollision(brick)) {
+                bricksToRemove.add(brick);
+                ball.reverseDirectionY();
+                score += 10;
+            }
+        }
+        bricks.removeAll(bricksToRemove);
+
+        if (bricks.isEmpty()) {
+            levelCompleted = true;
+        }
+
+        if (ball.getY() > getHeight()) {
+            gameOver = true;
+        }
+    }
+
+    /**
+     * Paints the game components on the panel.
+     *
+     * @param g The graphics context.
+     */
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        if (gameOver) {
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Arial", Font.BOLD, 30));
+            g.drawString("Game Over! Score: " + score, WIDTH / 4, HEIGHT / 2);
+            return;
+        }
+        if (levelCompleted) {
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Arial", Font.BOLD, 30));
+            g.drawString("Level Completed! Score: " + score, WIDTH / 4, HEIGHT / 2);
+            return;
+        }
+        paddle.draw(g);
+        ball.draw(g);
+        for (Brick brick : bricks) {
+            brick.draw(g);
+        }
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.PLAIN, 20));
+        g.drawString("Score: " + score, 10, 20);
+        g.drawString("Level: " + level, WIDTH - 100, 20);
+    }
+}
+
+/**
+ * Class for the paddle properties and movement.
+ */
+class Paddle {
+
+    private static final int WIDTH = 100;
+    private static final int HEIGHT = 20;
+    private int x = 350;
+    private int y = 550;
+    private int speed = 5;
+
+    /**
+     * Moves the paddle based on user input.
+     *
+     * @param keys Array of key states.
+     */
+    public void move(boolean[] keys) {
+        if (keys[KeyEvent.VK_LEFT] && x > 0) {
+            x -= speed;
+        }
+        if (keys[KeyEvent.VK_RIGHT] && x < 700) {
+            x += speed;
+        }
+    }
+
+    /**
+     * Draws the paddle on the screen.
+     *
+     * @param g The graphics context.
+     */
+    public void draw(Graphics g) {
+        g.setColor(Color.WHITE);
+        g.fillRect(x, y, WIDTH, HEIGHT);
+    }
+
+    /**
+     * Gets the bounding rectangle of the paddle.
+     *
+     * @return The bounding rectangle.
+     */
+    public Rectangle getBounds() {
+        return new Rectangle(x, y, WIDTH, HEIGHT);
+    }
+
+    /**
+     * Resets the paddle to its initial position.
+     */
+    public void reset() {
+        x = 350;
+        y = 550;
+    }
+}
+
+/**
+ * Class for ball properties, movement, and collision logic.
+ */
+class Ball {
+
+    private static final int DIAMETER = 15;
+    private int x = 400;
+    private int y = 300;
+    private int xSpeed = 2;
+    private int ySpeed = -2;
+
+    /**
+     * Moves the ball based on its speed.
+     */
+    public void move() {
+        if (x + xSpeed < 0 || x + xSpeed > 785) {
+            xSpeed = -xSpeed;
+        }
+        if (y + ySpeed < 0) {
+            ySpeed = -ySpeed;
+        }
+        x += xSpeed;
+        y += ySpeed;
+    }
+
+    /**
+     * Checks for collisions between the ball and the paddle.
+     *
+     * @param paddle The paddle to check collision with.
+     */
+    public void checkCollision(Paddle paddle) {
+        if (getBounds().intersects(paddle.getBounds())) {
+            ySpeed = -ySpeed;
+        }
+    }
+
+    /**
+     * Checks for collisions between the ball and a brick.
+     *
+     * @param brick The brick to check collision with.
+     * @return True if the ball collides with the brick, false otherwise.
+     */
+    public boolean checkCollision(Brick brick) {
+        return getBounds().intersects(brick.getBounds());
+    }
+
+    /**
+     * Reverses the direction of the ball on the Y axis.
+     */
+    public void reverseDirectionY() {
+        ySpeed = -ySpeed;
+    }
+
+    /**
+     * Draws the ball on the screen.
+     *
+     * @param g The graphics context.
+     */
+    public void draw(Graphics g) {
+        g.setColor(Color.WHITE);
+        g.fillOval(x, y, DIAMETER, DIAMETER);
+    }
+
+    /**
+     * Gets the bounding rectangle of the ball.
+     *
+     * @return The bounding rectangle.
+     */
+    public Rectangle getBounds() {
+        return new Rectangle(x, y, DIAMETER, DIAMETER);
+    }
+
+    /**
+     * Resets the ball to its initial position and speed.
+     */
+    public void reset() {
+        x = 400;
+        y = 300;
+        xSpeed = 2;
+        ySpeed = -2;
+    }
+}
+
+/**
+ * Class for brick properties and handling destruction.
+ */
+class Brick {
+
+    private static final int WIDTH = 80;
+    private static final int HEIGHT = 30;
+    private int x;
+    private int y;
+
+    /**
+     * Constructor to initialize the brick's position.
+     *
+     * @param x The x-coordinate of the brick.
+     * @param y The y-coordinate of the brick.
+     */
+    public Brick(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    /**
+     * Draws the brick on the screen.
+     *
+     * @param g The graphics context.
+     */
+    public void draw(Graphics g) {
+        g.setColor(Color.RED);
+        g.fillRect(x, y, WIDTH, HEIGHT);
+    }
+
+    /**
+     * Gets the bounding rectangle of the brick.
+     *
+     * @return The bounding rectangle.
+     */
+    public Rectangle getBounds() {
+        return new Rectangle(x, y, WIDTH, HEIGHT);
+    }
+}
